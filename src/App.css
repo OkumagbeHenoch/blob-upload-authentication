@@ -1,0 +1,128 @@
+
+
+
+
+:root {
+    --primary-color: #3b82f6; 
+    --primary-color-hover: #2563eb; 
+    --secondary-color: #f97316; 
+    --text-primary: #1e293b; 
+    --text-secondary: #4b5563; 
+    --bg-light: #f3f4f6; 
+    --bg-white: #ffffff;
+    --border-color: #d1d5db; 
+    --border-radius: 0.5rem;
+    --box-shadow-light: 0 2px 8px rgba(0, 0, 0, 0.05);
+    --transition-default: all 0.2s ease-in-out;
+    font-family: 'Inter', sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+}
+
+body {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+    margin: 0;
+    padding: 40px 20px; 
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+}
+
+
+
+
+h2, h3, h4 {
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+h2 {
+    font-size: 2.5rem;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+h3 {
+    font-size: 1.75rem;
+    margin-top: 2.5rem;
+}
+
+h4 {
+    font-size: 1.25rem;
+    margin-top: 1.5rem;
+    color: var(--text-secondary);
+}
+
+p {
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+/* --- Form Elements --- */
+input{
+    width: calc(100% - 1.5rem);
+    padding: 0.75rem;
+    margin-bottom: 1.25rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-size: 1rem;
+    transition: border-color var(--transition-default), box-shadow var(--transition-default);
+}
+
+input:focus{
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.25); /* Note: --primary-color-rgb needs to be defined if used like this, e.g., 59, 130, 246 */
+    outline: none;
+}
+
+
+button {
+    padding: 0.75rem 1.5rem;
+    margin-right: 0.75rem;
+    background-color: var(--primary-color);
+    color: var(--bg-white);
+    border: none;
+    border-radius: var(--border-radius);
+    font-size: 1rem;
+    cursor: pointer;
+    box-shadow: var(--box-shadow-light);
+    transition: background-color var(--transition-default), transform 0.1s ease-in-out;
+}
+
+button:hover {
+    background-color: var(--primary-color-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+button:active {
+    background-color: #1f4fbb; 
+    transform: translateY(0);
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.15);
+}
+
+button:disabled {
+    background-color: #cbd5e0;
+    color: var(--text-secondary);
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
+
+a {
+    color: var(--primary-color);
+    text-decoration: none;
+    transition: color var(--transition-default);
+}
+
+a:hover {
+    text-decoration: underline;
+    color: var(--primary-color-hover);
+}
+
