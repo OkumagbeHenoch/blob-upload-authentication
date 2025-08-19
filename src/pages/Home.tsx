@@ -2,7 +2,7 @@ import { useCurrentAccount } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
 import { Link } from "react-router-dom";
 import LogoutButton from "../components/Logout";
-import WalrusUploader from "../components/SetWal";
+import WalrusUploaderFlow from "../components/WalrusUpload";
 import {ConnectButton} from "@mysten/dapp-kit";
 // import TransferSUI from "../components/Send";
 import "../App.css";
@@ -32,7 +32,7 @@ return (
       <span className="">{currentAccount.address}</span>
       <ConnectButton/>
     </h1>
-    <WalrusUploader/>
+    <WalrusUploaderFlow/>
     <LogoutButton />
   </div>
 );
