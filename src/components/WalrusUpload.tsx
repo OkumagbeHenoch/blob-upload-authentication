@@ -5,7 +5,7 @@ import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-ki
 import { WalrusClient, WalrusFile } from "@mysten/walrus";
 import walrusWasmUrl from "@mysten/walrus-wasm/web/walrus_wasm_bg.wasm?url";
 
-export default function WalrusUploaderFlowBinary() {
+export default function BlobUploader() {
   const account = useCurrentAccount();
   const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
 
@@ -16,36 +16,20 @@ export default function WalrusUploaderFlowBinary() {
   const [encoded, setEncoded] = useState(false);
   const [digest, setDigest] = useState<string | null>(null);
   const [blobId, setBlobId] = useState<string | null>(null);
-  const [filesMeta, setFilesMeta] = useState<any[]>([]);
   const [status, setStatus] = useState<string>("Idle");
   const [busy, setBusy] = useState<boolean>(false);
 
   const [inputBlobId, setInputBlobId] = useState("");
-  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
-  const [downloadName, setDownloadName] = useState<string | null>(null);
 
   useEffect(() => {
-    return () => {
-      if (downloadUrl) URL.revokeObjectURL(downloadUrl);
-    };
-  }, [downloadUrl]);
-
-  useEffect(() => {
-    let mounted = true;
+    let connected = true;
     (async () => {
       setStatus("Initializing clients...");
       const wasmUrl = walrusWasmUrl ?? "https://unpkg.com/@mysten/walrus-wasm@latest/web/walrus_wasm_bg.wasm";
-
       try {
         const suiClient = new SuiClient({ url: getFullnodeUrl("testnet") });
-
-        const client = new WalrusClient({
-          network: "testnet",
-          suiClient,
-          wasmUrl,
-        });
-
-        if (!mounted) return;
+        const client = new WalrusClient({ network: "testnet", suiClient, wasmUrl });
+        if (!connected) return;
         setWalrusClient(client);
         setClientReady(true);
         setStatus("Walrus client ready");
@@ -54,9 +38,8 @@ export default function WalrusUploaderFlowBinary() {
         setStatus("Failed to initialize Walrus client: " + (err?.message ?? String(err)));
       }
     })();
-
     return () => {
-      mounted = false;
+      connected = false;
     };
   }, []);
 
@@ -67,14 +50,12 @@ export default function WalrusUploaderFlowBinary() {
     }
     if (busy) return;
     setBusy(true);
-
     try {
       setStatus("Reading file...");
       setFlow(null);
       setEncoded(false);
       setDigest(null);
       setBlobId(null);
-      setFilesMeta([]);
 
       const file = e.target.files?.[0];
       if (!file) {
@@ -120,7 +101,6 @@ export default function WalrusUploaderFlowBinary() {
   const handleRegister = async () => {
     if (!clientReady || !walrusClient) return setStatus("Walrus client not ready");
     if (!flow) return setStatus("No flow to register");
-    if (!account) return setStatus("Connect wallet first");
     if (busy) return;
 
     setBusy(true);
@@ -162,7 +142,6 @@ export default function WalrusUploaderFlowBinary() {
   const handleCertify = async () => {
     if (!clientReady || !walrusClient) return setStatus("Walrus client not ready");
     if (!flow) return setStatus("No flow to certify");
-    if (!account) return setStatus("Connect wallet first");
     if (busy) return;
 
     setBusy(true);
@@ -173,7 +152,6 @@ export default function WalrusUploaderFlowBinary() {
       await signAndExecuteTransaction({ transaction: certifyTx });
       setStatus("Certified. Fetching files...");
       const listed = await flow.listFiles();
-      setFilesMeta(listed);
       if (listed.length > 0) {
         setBlobId(listed[0].blobId);
         setStatus("Done. Blob ID available.");
@@ -188,66 +166,9 @@ export default function WalrusUploaderFlowBinary() {
     }
   };
 
-  const createDownloadFromWalrusFile = async (walrusFile: any) => {
-    const identifier = (await walrusFile.getIdentifier()) ?? inputBlobId ?? "walrus-file";
-    const tags = (await walrusFile.getTags()) ?? {};
-    const contentType = tags["content-type"] ?? "application/octet-stream";
-    const bytes = await walrusFile.bytes();
-    const blob = new Blob([bytes], { type: contentType });
-
-    if (downloadUrl) URL.revokeObjectURL(downloadUrl);
-    const url = URL.createObjectURL(blob);
-    setDownloadUrl(url);
-    setDownloadName(identifier);
-    setStatus("File ready to download");
-  };
-
-  const handleDownloadById = async () => {
-    if (!clientReady || !walrusClient) return setStatus("Walrus client not ready");
-    if (!inputBlobId) return setStatus("Enter a Blob ID first");
-    if (busy) return;
-
-    setBusy(true);
-    try {
-      setStatus("Fetching file from Walrus...");
-      const [walrusFile] = await walrusClient.getFiles({ ids: [inputBlobId] });
-      if (!walrusFile) throw new Error("No file returned by walrus");
-      await createDownloadFromWalrusFile(walrusFile);
-    } catch (err: any) {
-      console.error("Download error:", err);
-      setStatus("Download failed: " + (err?.message ?? String(err)));
-      if (downloadUrl) {
-        URL.revokeObjectURL(downloadUrl);
-        setDownloadUrl(null);
-        setDownloadName(null);
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleDownloadUploaded = async () => {
-    if (!clientReady || !walrusClient) return setStatus("Walrus client not ready");
-    if (!blobId) return setStatus("No uploaded blobId available");
-    if (busy) return;
-
-    setBusy(true);
-    try {
-      setStatus("Fetching uploaded blob...");
-      const [walrusFile] = await walrusClient.getFiles({ ids: [blobId] });
-      if (!walrusFile) throw new Error("No file returned by walrus");
-      await createDownloadFromWalrusFile(walrusFile);
-    } catch (err: any) {
-      console.error("Download uploaded error:", err);
-      setStatus("Failed to fetch uploaded blob: " + (err?.message ?? String(err)));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div>
-      <h3>Walrus Upload Flow (binary-safe)</h3>
+      <h3>Blob Upload</h3>
 
       <div>
         <input type="file" onChange={handleFileChange} disabled={!clientReady || busy} />
@@ -272,7 +193,6 @@ export default function WalrusUploaderFlowBinary() {
         </p>
       )}
 
-      <h3>Download by Blob ID</h3>
       <div>
         <input
           type="text"
@@ -281,9 +201,7 @@ export default function WalrusUploaderFlowBinary() {
           onChange={(e) => setInputBlobId(e.target.value)}
           disabled={!clientReady || busy}
         />
-        <button onClick={handleDownloadById} disabled={!clientReady || busy}>
-          Retrieve File
-        </button>
+
       </div>
     </div>
   );
