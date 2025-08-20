@@ -3,20 +3,15 @@ import React, { useEffect, useState } from "react";
 import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
 import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
 import { WalrusClient, WalrusFile } from "@mysten/walrus";
-
-const suiClient = new SuiClient({
-  url: getFullnodeUrl("testnet"),
-});
+import walrusWasmUrl from "@mysten/walrus-wasm/web/walrus_wasm_bg.wasm?url";
 
 export default function WalrusUploaderFlowBinary() {
   const account = useCurrentAccount();
   const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
 
-  // walrus client will be created after resolving wasmUrl (Vite import or CDN fallback)
-  const [walrusClient, setWalrusClient] = useState<InstanceType<typeof WalrusClient> | null>(null);
+  const [walrusClient, setWalrusClient] = useState<WalrusClient | null>(null);
   const [clientReady, setClientReady] = useState(false);
 
-  // flow state
   const [flow, setFlow] = useState<any | null>(null);
   const [encoded, setEncoded] = useState(false);
   const [digest, setDigest] = useState<string | null>(null);
@@ -25,54 +20,32 @@ export default function WalrusUploaderFlowBinary() {
   const [status, setStatus] = useState<string>("Idle");
   const [busy, setBusy] = useState<boolean>(false);
 
-  // download state
   const [inputBlobId, setInputBlobId] = useState("");
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadName, setDownloadName] = useState<string | null>(null);
 
-  // cleanup object URL on unmount / change
   useEffect(() => {
     return () => {
       if (downloadUrl) URL.revokeObjectURL(downloadUrl);
     };
   }, [downloadUrl]);
 
-  // Resolve wasmUrl (prefer bundler emitted URL if available, fallback to CDN)
   useEffect(() => {
     let mounted = true;
     (async () => {
-      setStatus("Resolving wasm...");
-      let wasmUrl = "https://unpkg.com/@mysten/walrus-wasm@latest/web/walrus_wasm_bg.wasm"; // CDN fallback
+      setStatus("Initializing clients...");
+      const wasmUrl = walrusWasmUrl ?? "https://unpkg.com/@mysten/walrus-wasm@latest/web/walrus_wasm_bg.wasm";
 
       try {
-        // Try Vite-style import (will succeed when bundler emits wasm asset)
-        // This dynamic import uses the ?url loader to get an emitted asset URL.
-        // If your bundler doesn't support it, the import will throw and we'll use the CDN fallback.
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore - bundler-specific import
-        const mod = await import("@mysten/walrus-wasm/web/walrus_wasm_bg.wasm?url");
-        // some bundlers export the url as default
-        // @ts-ignore
-        wasmUrl = (mod && (mod.default ?? mod)) as string;
-        console.log("Using wasm from bundler:", wasmUrl);
-      } catch (e) {
-        console.warn("Could not import local wasm asset; falling back to CDN wasm URL.", e);
-        // keep CDN wasmUrl
-      }
+        const suiClient = new SuiClient({ url: getFullnodeUrl("testnet") });
 
-      if (!mounted) return;
-
-      try {
         const client = new WalrusClient({
           network: "testnet",
           suiClient,
           wasmUrl,
-          // optional: set uploadRelay here if you have one
-          uploadRelay: {
-            host: "https://your-relay.testnet.walrus.space", // replace with real relay if desired
-          },
-          // you can pass storageNodeClientOptions here if needed
         });
+
+        if (!mounted) return;
         setWalrusClient(client);
         setClientReady(true);
         setStatus("Walrus client ready");
@@ -87,7 +60,6 @@ export default function WalrusUploaderFlowBinary() {
     };
   }, []);
 
-  // Step 1: Encode flow (user picks file)
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!clientReady || !walrusClient) {
       setStatus("Walrus client not ready");
@@ -114,15 +86,19 @@ export default function WalrusUploaderFlowBinary() {
       const arrayBuffer = await file.arrayBuffer();
       const uint8Array = new Uint8Array(arrayBuffer);
 
-      // Create flow and include content-type tag + identifier (filename)
+      if (typeof (walrusClient as any).writeFilesFlow !== "function") {
+        console.error("walrusClient missing writeFilesFlow:", walrusClient);
+        setStatus("Walrus client missing writeFilesFlow method.");
+        setBusy(false);
+        return;
+      }
+
       const newFlow = walrusClient.writeFilesFlow({
         files: [
           WalrusFile.from({
             contents: uint8Array,
             identifier: file.name,
-            tags: {
-              "content-type": file.type || "application/octet-stream",
-            },
+            tags: { "content-type": file.type || "application/octet-stream" },
           }),
         ],
       });
@@ -141,7 +117,6 @@ export default function WalrusUploaderFlowBinary() {
     }
   };
 
-  // Step 2: Register (on-click)
   const handleRegister = async () => {
     if (!clientReady || !walrusClient) return setStatus("Walrus client not ready");
     if (!flow) return setStatus("No flow to register");
@@ -151,16 +126,10 @@ export default function WalrusUploaderFlowBinary() {
     setBusy(true);
     try {
       setStatus("Preparing register transaction...");
-      const registerTx = flow.register({
-        epochs: 3,
-        owner: account.address,
-        deletable: true,
-      });
-
+      const registerTx = flow.register({ epochs: 3, owner: account.address, deletable: true });
       setStatus("Signing & executing register tx...");
       const result = await signAndExecuteTransaction({ transaction: registerTx });
-      const digestFromResult = result?.digest ?? null;
-      setDigest(digestFromResult);
+      setDigest(result?.digest ?? null);
       setStatus("Registered. Digest saved. Now upload.");
       console.log("Register result:", result);
     } catch (err: any) {
@@ -171,7 +140,6 @@ export default function WalrusUploaderFlowBinary() {
     }
   };
 
-  // Step 3: Upload (fan-out to storage nodes)
   const handleUpload = async () => {
     if (!clientReady || !walrusClient) return setStatus("Walrus client not ready");
     if (!flow) return setStatus("No flow to upload");
@@ -180,7 +148,7 @@ export default function WalrusUploaderFlowBinary() {
 
     setBusy(true);
     try {
-      setStatus("Uploading to storage nodes (may take time)...");
+      setStatus("Uploading to storage nodes...");
       await flow.upload({ digest });
       setStatus("Upload complete. Click Certify next.");
     } catch (err: any) {
@@ -191,7 +159,6 @@ export default function WalrusUploaderFlowBinary() {
     }
   };
 
-  // Step 4: Certify (final on-chain tx)
   const handleCertify = async () => {
     if (!clientReady || !walrusClient) return setStatus("Walrus client not ready");
     if (!flow) return setStatus("No flow to certify");
@@ -202,11 +169,9 @@ export default function WalrusUploaderFlowBinary() {
     try {
       setStatus("Preparing certify tx...");
       const certifyTx = flow.certify();
-
       setStatus("Signing & executing certify tx...");
       await signAndExecuteTransaction({ transaction: certifyTx });
-
-      setStatus("Certified. Fetching flow.listFiles()...");
+      setStatus("Certified. Fetching files...");
       const listed = await flow.listFiles();
       setFilesMeta(listed);
       if (listed.length > 0) {
@@ -223,27 +188,20 @@ export default function WalrusUploaderFlowBinary() {
     }
   };
 
-  // Unified helper: create downloadable object URL from WalrusFile (binary-safe)
   const createDownloadFromWalrusFile = async (walrusFile: any) => {
-    // Try to get identifier and tags (content-type)
     const identifier = (await walrusFile.getIdentifier()) ?? inputBlobId ?? "walrus-file";
     const tags = (await walrusFile.getTags()) ?? {};
     const contentType = tags["content-type"] ?? "application/octet-stream";
-
-    // Always read bytes (binary-safe)
     const bytes = await walrusFile.bytes();
     const blob = new Blob([bytes], { type: contentType });
 
-    if (downloadUrl) {
-      URL.revokeObjectURL(downloadUrl);
-    }
+    if (downloadUrl) URL.revokeObjectURL(downloadUrl);
     const url = URL.createObjectURL(blob);
     setDownloadUrl(url);
     setDownloadName(identifier);
     setStatus("File ready to download");
   };
 
-  // Download by Blob ID (binary-safe)
   const handleDownloadById = async () => {
     if (!clientReady || !walrusClient) return setStatus("Walrus client not ready");
     if (!inputBlobId) return setStatus("Enter a Blob ID first");
@@ -254,7 +212,6 @@ export default function WalrusUploaderFlowBinary() {
       setStatus("Fetching file from Walrus...");
       const [walrusFile] = await walrusClient.getFiles({ ids: [inputBlobId] });
       if (!walrusFile) throw new Error("No file returned by walrus");
-
       await createDownloadFromWalrusFile(walrusFile);
     } catch (err: any) {
       console.error("Download error:", err);
@@ -269,7 +226,6 @@ export default function WalrusUploaderFlowBinary() {
     }
   };
 
-  // Optionally allow download of the file just uploaded (binary-safe)
   const handleDownloadUploaded = async () => {
     if (!clientReady || !walrusClient) return setStatus("Walrus client not ready");
     if (!blobId) return setStatus("No uploaded blobId available");
@@ -312,21 +268,9 @@ export default function WalrusUploaderFlowBinary() {
 
       {blobId && (
         <p>
-          ✅ Blob ID: <code>{blobId}</code>
+          ✅ Blob ID: {blobId}
         </p>
       )}
-
-      {filesMeta.length > 0 && (
-        <div>
-          <h4>Uploaded Files (flow.listFiles)</h4>
-          <pre>{JSON.stringify(filesMeta, null, 2)}</pre>
-          <button onClick={handleDownloadUploaded} disabled={busy}>
-            Download Uploaded File
-          </button>
-        </div>
-      )}
-
-      <hr />
 
       <h3>Download by Blob ID</h3>
       <div>
@@ -341,14 +285,6 @@ export default function WalrusUploaderFlowBinary() {
           Retrieve File
         </button>
       </div>
-
-      {downloadUrl && (
-        <div>
-          <a href={downloadUrl} download={downloadName ?? "walrus-file"}>
-            Save file
-          </a>
-        </div>
-      )}
     </div>
   );
 }

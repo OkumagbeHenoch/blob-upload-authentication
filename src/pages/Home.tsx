@@ -30,7 +30,6 @@ return (
     <h1 className="">
       Welcome,<br />
       <span className="">{currentAccount.address}</span>
-      <ConnectButton/>
     </h1>
     <WalrusUploaderFlow/>
     <LogoutButton />
